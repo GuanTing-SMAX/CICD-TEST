@@ -13,7 +13,7 @@ on:
       - dev
     paths-ignore:
       - .github/workflows/**
-      
+
 jobs:
   commit:
     runs-on: ubuntu-latest
@@ -23,19 +23,23 @@ jobs:
       uses: actions/checkout@v5
       with:
         repository: GuanTing-SMAX/argoCD-test
-        # Default: ${{ github.token }}
         token: ${{ secrets.REPO_ACCESS_TOKEN }}
         path: ./argoCD-test             
+
     - name: update file
       run: |
         VALUES_FILE="./argoCD-test/values.yaml"
         yq e ".image.tag = \"${{ github.sha }}\"" -i "$VALUES_FILE"
 
     - name: git add and push commit 
+      env:
+        GITHUB_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
       run: |
         cd argoCD-test
         git config --global user.email "guanting@hismax.onmicrosoft.com"
         git config --global user.name "github-actions"
+
+        git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/GuanTing-SMAX/argoCD-test.git
         git add .
-        git commit -m "Update image tag to ${{ github.sha }}"
+        git commit -m "Update image tag to ${{ github.sha }}" || echo "No changes to commit"
         git push origin main
