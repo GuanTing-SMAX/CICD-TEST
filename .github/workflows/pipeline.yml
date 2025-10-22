@@ -29,8 +29,8 @@ jobs:
     - name: update file
       run: |
         VALUES_FILE="./argoCD-test/values.yaml"
-        # 取得台灣時區時間（UTC+8）
         DATE_TAG=$(date +"%Y%m%d%H%M%S" -d "+8 hour")
+        echo "TAG=$DATE_TAG" >> $GITHUB_ENV
         echo "TAG=$DATE_TAG"
         yq e ".image.tag = \"$DATE_TAG\"" -i "$VALUES_FILE"
 
@@ -43,5 +43,5 @@ jobs:
         git config --global user.name "github-actions"
 
         git add .
-        git commit -m "Update image tag to $(date +"%Y%m%d%H%M%S" -d "+8 hour")"
+         git commit -m "Update image tag to $TAG"
         git push origin main
