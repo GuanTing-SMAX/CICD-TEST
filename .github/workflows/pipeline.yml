@@ -19,27 +19,39 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: checkGitRepo
-      uses: actions/checkout@v5
-      with:
-        repository: GuanTing-SMAX/argoCD-test
-        token: ${{ secrets.REPO_ACCESS_TOKEN }}
-        path: ./argoCD-test             
+      - name: Set Docker image tag
+        run: |
+          DATE_TAG=$(date +"%Y%m%d%H%M%S" -d "+8 hour")
+          echo "TAG=$DATE_TAG" >> $GITHUB_ENV
+          echo "Image tag will be: $DATE_TAG"
+          
+      - name: Checkout ArgoCD Config Repository
+        uses: actions/checkout@v5
+        with:
+          repository: GuanTing-SMAX/argoCD-test
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          path: ./argoCD-test
 
-    - name: update file
-      run: |
-        FILE_PATH="./argoCD-test/templates/deployments/demo-backend.yaml"
-        echo "Updating image tag to latest ..."
-        sed -i 's|\(guanting0609/redis-sentinel-test:\).*|\1latest|' "$FILE_PATH"
+      - name: Update ArgoCD values.yaml
+        run: |
+          REPO_NAME=be-his-auth
+          VALUES_FILE="./argoCD-test/${REPO_NAME}/values.yaml"
+          
+          if [ ! -f "$VALUES_FILE" ]; then
+            echo "Warning: values.yaml not found at $VALUES_FILE"
+            exit 1
+          fi
+          
+          yq e ".image.tag = \"$TAG\"" -i "$VALUES_FILE"
+          echo "Updated $VALUES_FILE with tag: $TAG"
 
-    - name: git add and push commit 
-      env:
-        GITHUB_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
-      run: |
-        cd argoCD-test
-        git config --global user.email "guanting@hismax.onmicrosoft.com"
-        git config --global user.name "github-actions"
-
-        git add .
-         git commit -m "Update image tag For Test"
-        git push origin main
+      - name: Commit and Push ArgoCD Changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
+        run: |
+          cd argoCD-test
+          git config --global user.email "guanting@hismax.onmicrosoft.com"
+          git config --global user.name "github-actions"
+          git add .
+          git diff --staged --quiet || git commit -m "Update his-auth image tag to $TAG for ${{ github.repository }}"
+          git push origin main
