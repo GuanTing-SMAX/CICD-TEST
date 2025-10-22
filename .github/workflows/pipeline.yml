@@ -29,7 +29,10 @@ jobs:
     - name: update file
       run: |
         VALUES_FILE="./argoCD-test/values.yaml"
-        yq e ".image.tag = \"${{ github.sha }}\"" -i "$VALUES_FILE"
+        # 取得台灣時區時間（UTC+8）
+        DATE_TAG=$(date +"%Y%m%d%H%M%S" -d "+8 hour")
+        echo "TAG=$DATE_TAG"
+        yq e ".image.tag = \"$DATE_TAG\"" -i "$VALUES_FILE"
 
     - name: git add and push commit 
       env:
@@ -40,5 +43,5 @@ jobs:
         git config --global user.name "github-actions"
 
         git add .
-        git commit -m "Update image tag to ${{ github.sha }}" || echo "No changes to commit"
+        git commit -m "Update image tag to $(date +"%Y%m%d%H%M%S" -d "+8 hour")"
         git push origin main
