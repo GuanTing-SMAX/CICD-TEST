@@ -28,7 +28,8 @@ jobs:
 
     - name: update file
       run: |
-        VALUES_FILE="./argoCD-test/values.yaml"
+        REPO_NAME=$(basename "${{ github.repository }}")
+        VALUES_FILE="./argoCD-test/${REPO_NAME}/values.yaml"
         DATE_TAG=$(date +"%Y%m%d%H%M%S" -d "+8 hour")
         echo "TAG=$DATE_TAG" >> $GITHUB_ENV
         echo "TAG=$DATE_TAG"
