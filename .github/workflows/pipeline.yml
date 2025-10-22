@@ -28,12 +28,9 @@ jobs:
 
     - name: update file
       run: |
-        REPO_NAME=$(basename "${{ github.repository }}")
-        VALUES_FILE="./argoCD-test/${REPO_NAME}/values.yaml"
-        DATE_TAG=$(date +"%Y%m%d%H%M%S" -d "+8 hour")
-        echo "TAG=$DATE_TAG" >> $GITHUB_ENV
-        echo "TAG=$DATE_TAG"
-        yq e ".image.tag = \"$DATE_TAG\"" -i "$VALUES_FILE"
+        FILE_PATH="./argoCD-test/templates/deployments/demo-backend.yaml"
+        echo "Updating image tag to latest ..."
+        sed -i 's|\(guanting0609/redis-sentinel-test:\).*|\1latest|' "$FILE_PATH"
 
     - name: git add and push commit 
       env:
@@ -44,5 +41,5 @@ jobs:
         git config --global user.name "github-actions"
 
         git add .
-         git commit -m "Update image tag to $TAG"
+         git commit -m "Update image tag For Test"
         git push origin main
