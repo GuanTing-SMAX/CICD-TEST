@@ -35,7 +35,7 @@ jobs:
       - name: Update ArgoCD values.yaml
         run: |
           REPO_NAME=be-his-auth
-          VALUES_FILE="./argoCD-test/${REPO_NAME}/values.yaml"
+          VALUES_FILE="./argoCD-test/service/${REPO_NAME}/values.yaml"
           
           if [ ! -f "$VALUES_FILE" ]; then
             echo "Warning: values.yaml not found at $VALUES_FILE"
