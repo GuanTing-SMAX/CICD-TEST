@@ -1,57 +1,116 @@
 name: CI/CD for Main and Develop
+
 on:
   push:
     branches:
-      - main
       - dev
+      - sit
     paths-ignore:
       - .github/workflows/**
 
   pull_request:
     branches:
-      - main
       - dev
+      - sit
     paths-ignore:
       - .github/workflows/**
 
 jobs:
-  commit:
+  # PR 階段只做檢查
+  pr-build:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-
+    env:
+      NEXUS_USER: github
+      NEXUS_PASS: ${{ secrets.NEXUS_GITHUB_PASSWORD }}
     steps:
-      - name: Set Docker image tag
-        run: |
-          DATE_TAG=$(date +"%Y%m%d%H%M%S" -d "+8 hour")
-          echo "TAG=$DATE_TAG" >> $GITHUB_ENV
-          echo "Image tag will be: $DATE_TAG"
-          
-      - name: Checkout ArgoCD Config Repository
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v4
+
+      - name: Set up Amazon Corretto JDK 21
+        uses: actions/setup-java@v4
         with:
-          repository: GuanTing-SMAX/argoCD-test
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}
-          path: ./argoCD-test
+          java-version: '21'
+          distribution: 'corretto'
+          cache: 'maven'
 
-      - name: Update ArgoCD values.yaml
+      - name: Setup Maven
+        uses: ./.github/actions/setup-maven
+
+      - name: Build with Maven
+        run: mvn clean install
+
+  # Push 到 main/dev 才做 deploy
+  deploy:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      NEXUS_USER: github
+      NEXUS_PASS: ${{ secrets.NEXUS_GITHUB_PASSWORD }}
+      REPO_NAME: ${{ github.event.repository.name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Amazon Corretto JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'corretto'
+          cache: 'maven'
+
+      - name: Setup Maven
+        uses: ./.github/actions/setup-maven
+
+      - name: install with Maven
+        run: mvn clean install
+
+      - name: Set values file based on branch
         run: |
-          REPO_NAME=be-his-auth
-          VALUES_FILE="./argoCD-test/service/${REPO_NAME}/values.yaml"
-          
-          if [ ! -f "$VALUES_FILE" ]; then
-            echo "Warning: values.yaml not found at $VALUES_FILE"
-            exit 1
-          fi
-          
-          yq e ".image.tag = \"$TAG\"" -i "$VALUES_FILE"
-          echo "Updated $VALUES_FILE with tag: $TAG"
+          BRANCH="${GITHUB_REF##*/}"
 
-      - name: Commit and Push ArgoCD Changes
+          if [ "$BRANCH" = "dev" ]; then
+            echo "VALUES_FILE=dev-values.yaml" >> $GITHUB_ENV
+          elif [ "$BRANCH" = "sit" ]; then
+            echo "VALUES_FILE=sit-values.yaml" >> $GITHUB_ENV
+          elif [ "$BRANCH" = "main" ]; then
+            echo "VALUES_FILE=prod-values.yaml" >> $GITHUB_ENV
+          fi
+
+      - name: Set Docker image tag env
+        run: |
+          DATE_TAG=$(TZ=Asia/Taipei date +"%Y%m%d%H%M%S")
+          echo "TAG=$DATE_TAG" >> $GITHUB_ENV
+
+      - name: Login to Docker Registry
+        run: |
+          echo $NEXUS_PASS | docker login repo.southmax.com --username $NEXUS_USER --password-stdin
+
+      - name: Build Docker Image
+        run: |
+          docker build -t repo.southmax.com/${REPO_NAME}:${TAG} .
+
+      - name: Push Docker Image
+        run: |
+          docker push repo.southmax.com/${REPO_NAME}:${TAG}
+
+      - name: Checkout ArgoCD Config Repository
+        uses: actions/checkout@v4
+        with:
+          repository: smax-tw/be-his-argoCD-yml
+          token: ${{ secrets.REPO_ACCESS_TOKEN }}
+          path: ./be-his-argoCD-yml
+
+      - name: Update values.yaml
+        run: |
+          VALUES_FILE="./be-his-argoCD-yml/service/${REPO_NAME}/${VALUES_FILE}"
+          yq e ".image.tag = \"$TAG\"" -i "$VALUES_FILE"
+
+      - name: Commit and Push
         env:
           GITHUB_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
         run: |
-          cd argoCD-test
+          cd be-his-argoCD-yml
           git config --global user.email "guanting@hismax.onmicrosoft.com"
           git config --global user.name "github-actions"
           git add .
-          git diff --staged --quiet || git commit -m "Update his-auth image tag to $TAG for ${{ github.repository }}"
+          git diff --staged --quiet || git commit -m "Update image tag to $TAG for ${{ github.repository }}"
           git push origin main
