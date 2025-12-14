@@ -42,7 +42,7 @@ jobs:
             BRANCH_HEAD=$(git rev-parse origin/sit)
           
             if [[ "$TAG_COMMIT" != "$BRANCH_HEAD" ]]; then
-              echo "Warning: Tag is not on the HEAD of sit branch"
+              echo "Error: Tag is not on the HEAD of sit branch"
               echo "Tag commit: $TAG_COMMIT"
               echo "Branch HEAD: $BRANCH_HEAD"
               exit 1
@@ -54,7 +54,7 @@ jobs:
             BRANCH_HEAD=$(git rev-parse origin/main)
           
             if [[ "$TAG_COMMIT" != "$BRANCH_HEAD" ]]; then
-              echo "Warning: Tag is not on the HEAD of main branch"
+              echo "Error: Tag is not on the HEAD of main branch"
               echo "Tag commit: $TAG_COMMIT"
               echo "Branch HEAD: $BRANCH_HEAD"
               exit 1
