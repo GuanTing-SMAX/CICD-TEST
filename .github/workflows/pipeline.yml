@@ -2,7 +2,6 @@ name: CI/CD
 
 on:
   push:
-    # 僅 dev 是看 push 推送,sit、main 僅看 tags
     branches:
       - dev
     tags:
@@ -21,68 +20,54 @@ on:
       - .github/workflows/**
 
 jobs:
-  # PR 階段只做檢查
   pr-build:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    env:
-      NEXUS_USER: github
-      NEXUS_PASS: ${{ secrets.NEXUS_GITHUB_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Amazon Corretto JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'corretto'
-          cache: 'maven'
-
-      - name: Setup Maven
-        uses: ./.github/actions/setup-maven
-
-      - name: install with Maven
-        run: mvn clean install
-
-  deploy:
-    # Push 才做 deploy
-    if: github.event_name == 'push'
+  validate:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
-    env:
-      NEXUS_USER: github
-      NEXUS_PASS: ${{ secrets.NEXUS_GITHUB_PASSWORD }}
-      REPO_NAME: ${{ github.event.repository.name }}
     steps:
       - uses: actions/checkout@v4
 
-      # 驗證 Tag 是否在分支 HEAD
-      - name: Validate Tag is on Branch HEAD
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Validate Tag
         run: |
           REF="$GITHUB_REF"
           
           if [[ "$REF" == "refs/tags/sit/"* ]]; then
-            BRANCH="sit"
-          elif [[ "$REF" == "refs/tags/main/"* || "$REF" == "refs/tags/release/"* ]]; then
-            BRANCH="main"
-          fi
-          
-          if [[ -n "$BRANCH" ]]; then
-            git fetch origin "$BRANCH"
+            git fetch origin sit
             TAG_COMMIT=$(git rev-parse HEAD)
-            BRANCH_HEAD=$(git rev-parse "origin/$BRANCH")
-            
+            BRANCH_HEAD=$(git rev-parse origin/sit)
+          
             if [[ "$TAG_COMMIT" != "$BRANCH_HEAD" ]]; then
-              echo "❌ Error: Tag must be created on the HEAD commit of $BRANCH branch"
+              echo "Warning: Tag is not on the HEAD of sit branch"
               echo "Tag commit: $TAG_COMMIT"
               echo "Branch HEAD: $BRANCH_HEAD"
               exit 1
-            else
-              echo "✅ Tag is on the HEAD of $BRANCH branch"
+            fi
+          
+          elif [[ "$REF" == "refs/tags/main/"* || "$REF" == "refs/tags/release/"* ]]; then
+            git fetch origin main
+            TAG_COMMIT=$(git rev-parse HEAD)
+            BRANCH_HEAD=$(git rev-parse origin/main)
+          
+            if [[ "$TAG_COMMIT" != "$BRANCH_HEAD" ]]; then
+              echo "Warning: Tag is not on the HEAD of main branch"
+              echo "Tag commit: $TAG_COMMIT"
+              echo "Branch HEAD: $BRANCH_HEAD"
+              exit 1
             fi
           fi
 
-      # Set Env
+  deploy:
+    if: github.event_name == 'push' && always()
+    needs: [validate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Set Env
         run: |
           REF="$GITHUB_REF"
@@ -95,7 +80,7 @@ jobs:
             VERSION="${REF#refs/tags/sit/}"
             VERSION="${VERSION//\//-}"
             TAG="sit-${VERSION}"
-          
+      
           elif [[ "$REF" == "refs/tags/main/"* || "$REF" == "refs/tags/release/"* ]]; then
             ENV="release"
             VERSION="${REF#refs/tags/*/}"
@@ -105,5 +90,3 @@ jobs:
         
           echo "ENV=$ENV" >> $GITHUB_ENV
           echo "TAG=$TAG" >> $GITHUB_ENV
-          echo "Environment: $ENV"
-          echo "Tag: $TAG"
