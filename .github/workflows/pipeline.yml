@@ -37,7 +37,7 @@ jobs:
           REF="$GITHUB_REF"
           
           if [[ "$REF" == "refs/tags/sit/"* ]]; then
-            git fetch origin sit
+            git fetch origin sit --depth=1 --no-tags
             TAG_COMMIT=$(git rev-parse HEAD)
             BRANCH_HEAD=$(git rev-parse origin/sit)
           
@@ -49,7 +49,7 @@ jobs:
             fi
           
           elif [[ "$REF" == "refs/tags/main/"* || "$REF" == "refs/tags/release/"* ]]; then
-            git fetch origin main
+            git fetch origin main --depth=1 --no-tags
             TAG_COMMIT=$(git rev-parse HEAD)
             BRANCH_HEAD=$(git rev-parse origin/main)
           
