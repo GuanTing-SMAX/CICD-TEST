@@ -1,10 +1,14 @@
-name: CI/CD for Main and Develop
+name: CI/CD
 
 on:
   push:
+    # 僅 dev 是看 push 推送,sit、main 僅看 tags
     branches:
       - dev
-      - sit
+    tags:
+      - "sit/*"
+      - "main/*"
+      - "release/*"
     paths-ignore:
       - .github/workflows/**
 
@@ -12,6 +16,7 @@ on:
     branches:
       - dev
       - sit
+      - main
     paths-ignore:
       - .github/workflows/**
 
@@ -36,11 +41,11 @@ jobs:
       - name: Setup Maven
         uses: ./.github/actions/setup-maven
 
-      - name: Build with Maven
+      - name: install with Maven
         run: mvn clean install
 
-  # Push 到 main/dev 才做 deploy
   deploy:
+    # Push 才做 deploy
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     env:
@@ -50,67 +55,55 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Amazon Corretto JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'corretto'
-          cache: 'maven'
-
-      - name: Setup Maven
-        uses: ./.github/actions/setup-maven
-
-      - name: install with Maven
-        run: mvn clean install
-
-      - name: Set values file based on branch
+      # 驗證 Tag 是否在分支 HEAD
+      - name: Validate Tag is on Branch HEAD
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
-          BRANCH="${GITHUB_REF##*/}"
-
-          if [ "$BRANCH" = "dev" ]; then
-            echo "VALUES_FILE=dev-values.yaml" >> $GITHUB_ENV
-          elif [ "$BRANCH" = "sit" ]; then
-            echo "VALUES_FILE=sit-values.yaml" >> $GITHUB_ENV
-          elif [ "$BRANCH" = "main" ]; then
-            echo "VALUES_FILE=prod-values.yaml" >> $GITHUB_ENV
+          REF="$GITHUB_REF"
+          
+          if [[ "$REF" == "refs/tags/sit/"* ]]; then
+            BRANCH="sit"
+          elif [[ "$REF" == "refs/tags/main/"* || "$REF" == "refs/tags/release/"* ]]; then
+            BRANCH="main"
+          fi
+          
+          if [[ -n "$BRANCH" ]]; then
+            git fetch origin "$BRANCH"
+            TAG_COMMIT=$(git rev-parse HEAD)
+            BRANCH_HEAD=$(git rev-parse "origin/$BRANCH")
+            
+            if [[ "$TAG_COMMIT" != "$BRANCH_HEAD" ]]; then
+              echo "❌ Error: Tag must be created on the HEAD commit of $BRANCH branch"
+              echo "Tag commit: $TAG_COMMIT"
+              echo "Branch HEAD: $BRANCH_HEAD"
+              exit 1
+            else
+              echo "✅ Tag is on the HEAD of $BRANCH branch"
+            fi
           fi
 
-      - name: Set Docker image tag env
+      # Set Env
+      - name: Set Env
         run: |
-          DATE_TAG=$(TZ=Asia/Taipei date +"%Y%m%d%H%M%S")
-          echo "TAG=$DATE_TAG" >> $GITHUB_ENV
-
-      - name: Login to Docker Registry
-        run: |
-          echo $NEXUS_PASS | docker login repo.southmax.com --username $NEXUS_USER --password-stdin
-
-      - name: Build Docker Image
-        run: |
-          docker build -t repo.southmax.com/${REPO_NAME}:${TAG} .
-
-      - name: Push Docker Image
-        run: |
-          docker push repo.southmax.com/${REPO_NAME}:${TAG}
-
-      - name: Checkout ArgoCD Config Repository
-        uses: actions/checkout@v4
-        with:
-          repository: smax-tw/be-his-argoCD-yml
-          token: ${{ secrets.REPO_ACCESS_TOKEN }}
-          path: ./be-his-argoCD-yml
-
-      - name: Update values.yaml
-        run: |
-          VALUES_FILE="./be-his-argoCD-yml/service/${REPO_NAME}/${VALUES_FILE}"
-          yq e ".image.tag = \"$TAG\"" -i "$VALUES_FILE"
-
-      - name: Commit and Push
-        env:
-          GITHUB_TOKEN: ${{ secrets.REPO_ACCESS_TOKEN }}
-        run: |
-          cd be-his-argoCD-yml
-          git config --global user.email "guanting@hismax.onmicrosoft.com"
-          git config --global user.name "github-actions"
-          git add .
-          git diff --staged --quiet || git commit -m "Update image tag to $TAG for ${{ github.repository }}"
-          git push origin main
+          REF="$GITHUB_REF"
+          if [[ "$REF" == "refs/heads/dev" ]]; then
+            ENV="dev"
+            TAG="dev-$(TZ=Asia/Taipei date +'%Y%m%d%H%M%S')"
+          
+          elif [[ "$REF" == "refs/tags/sit/"* ]]; then
+            ENV="sit"
+            VERSION="${REF#refs/tags/sit/}"
+            VERSION="${VERSION//\//-}"
+            TAG="sit-${VERSION}"
+          
+          elif [[ "$REF" == "refs/tags/main/"* || "$REF" == "refs/tags/release/"* ]]; then
+            ENV="release"
+            VERSION="${REF#refs/tags/*/}"
+            VERSION="${VERSION//\//-}"
+            TAG="release-${VERSION}"
+          fi
+        
+          echo "ENV=$ENV" >> $GITHUB_ENV
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "Environment: $ENV"
+          echo "Tag: $TAG"
