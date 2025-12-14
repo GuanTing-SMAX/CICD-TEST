@@ -62,7 +62,7 @@ jobs:
           fi
 
   deploy:
-    if: github.event_name == 'push' && always()
+    if: github.event_name == 'push'
     needs: [validate]
     runs-on: ubuntu-latest
     steps:
