@@ -1,0 +1,41 @@
+name: PR Dev To Sit
+
+on:
+  workflow_dispatch:
+
+jobs:
+  create-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr create --base sit --head dev --title "chore: merge dev into sit" --body "Manual merge"
+
+      - name: Wait for PR merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr_number=${{ steps.pr.outputs.pr_number }}
+          echo "Waiting for PR #$pr_number to be merged..."
+          
+          while true; do
+            state=$(gh pr view $pr_number --json state --jq '.state')
+            if [ "$state" == "MERGED" ]; then
+              echo "PR merged!"
+              break
+            elif [ "$state" == "CLOSED" ]; then
+              echo "PR closed without merging"
+              exit 1
+            fi
+            sleep 10
+          done
+      - name: Run after merge
+        run: |
+          echo "PR 已合併,執行後續動作"
